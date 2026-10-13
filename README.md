@@ -59,7 +59,9 @@ decision_tree/
 │   ├── tests/                    # 50 pytest tests
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
-│   └── run.sh
+│   ├── run.sh                    # local dev (reload, port 8000)
+│   ├── start.sh                  # production start (0.0.0.0, $PORT)
+│   └── .python-version           # Python 3.12 pin
 ├── src/
 │   ├── App.tsx                   # single-page orchestration (auto-generation)
 │   ├── components/               # canvas, nodes, panels, upload, inspector…
@@ -93,11 +95,11 @@ npm install
 npm run dev          # http://localhost:3000  (proxies /api → :8000)
 ```
 
-Optional `.env` (see `.env.example`):
-
-```
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
+Local development needs **no** `.env`: the axios client falls back to a
+same-origin `/api` base, and Vite's dev proxy forwards it to
+`http://localhost:8000` (see `server.proxy` in `vite.config.ts`). To point the
+dev server somewhere else, copy `.env.example` to `.env` and set
+`VITE_API_BASE_URL`. The variable is read at **build** time.
 
 ### 3. Checks
 
@@ -110,6 +112,103 @@ npm run lint         # oxlint (0 errors, 0 warnings)
 npx tsc --noEmit     # types
 npm run build        # production bundle
 ```
+
+## Deployment (Vercel + Render)
+
+The app is deployed as **two separate services**:
+
+| | Service | Directory |
+|---|---------|-----------|
+| Frontend | Vercel (static site) | repository root |
+| Backend | Render (web service) | `backend/` |
+
+Nothing is deployed automatically — configure both services manually as below.
+
+### Backend on Render
+
+- **Root Directory:** `backend` (Render dashboard field; `start.sh` also works
+  when run from the repository root, so you may leave Root Directory empty)
+- **Runtime:** Python 3.12 (pinned in `backend/.python-version`)
+- **Build Command:** `pip install -r requirements.txt`
+  (from the repo root instead: `pip install -r backend/requirements.txt`)
+- **Start Command:** `sh start.sh`
+  (from the repo root instead: `sh backend/start.sh`)
+
+`start.sh` runs:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+```
+
+It binds `0.0.0.0` and uses Render's `$PORT`. Do **not** use `run.sh` on
+Render — it is the local-dev script (`--reload`, fixed port 8000).
+
+- **Health Check Path:** `/` (default) or `/api/health` — both return `200`.
+- **Workers:** leave at 1 (the `start.sh` default). Extra workers each get
+  their own memory and would not share datasets/models.
+- Optional **Test Command:** `pip install -r requirements-dev.txt && python -m pytest tests -q`
+
+#### Backend environment variables (Render → Environment)
+
+| Variable | Required | Value |
+|----------|----------|-------|
+| `CORS_ORIGINS` | **Yes** | Comma-separated allowed browser origins, e.g. `https://your-app.vercel.app` (add preview URLs like `https://your-app-git-branch-user.vercel.app` if needed). Defaults to localhost dev origins only — never set it to `*`. |
+| `MAX_UPLOAD_BYTES` | No | Max CSV upload size in bytes (default `10485760` = 10 MB) |
+| `MAX_DATASET_ROWS` | No | Max dataset rows (default `200000`) |
+| `MAX_DATASET_COLS` | No | Max dataset columns (default `200`) |
+
+### Frontend on Vercel
+
+- **Framework Preset:** Vite (auto-detected)
+- **Root Directory:** `.` (repository root)
+- **Install Command:** `npm install`
+- **Build Command:** `npm run build`
+- **Output Directory:** `dist`
+- **Node:** `^20.19.0 || >=22.12.0` (enforced via `engines` in `package.json`)
+
+#### Frontend environment variables (Vercel → Settings → Environment Variables)
+
+| Variable | When | Value |
+|----------|------|-------|
+| `VITE_API_BASE_URL` | **Build time — Required** | Origin of the Render backend, e.g. `https://treeviz-api.onrender.com` (no trailing slash). Vite inlines this into the bundle; **redeploy after changing it.** |
+
+Without `VITE_API_BASE_URL` the frontend calls `/api` on its own origin, which
+Vercel does not serve — every request would 404.
+
+### Cross-service behaviour
+
+The split deployment needs no extra configuration beyond the two variables:
+
+- CSV upload (`multipart/form-data`), Decision Tree and Random Forest training,
+  predictions and decision-path requests are plain `POST`s from the axios
+  client to `${VITE_API_BASE_URL}/api/...`; the backend serves `/api/*` under
+  the CORS origin allow-list.
+- Browser preflights (`OPTIONS`, sent for JSON `POST`s) are handled by
+  FastAPI's `CORSMiddleware` with `allow_methods`/`allow_headers = *`.
+- The dataset/model IDs the frontend passes back are keys of the backend's
+  **in-memory** stores — they are only valid on the instance that created them
+  (see limitations below).
+
+### Storage limitations (read before deploying)
+
+Datasets and trained models live **only in process memory**
+(`datasets` / `models` dicts in `backend/app/api/routes.py`). There is no
+database and no filesystem persistence (uploads are parsed from bytes, never
+written to disk). Consequences:
+
+- **Restart ⇒ data loss.** Every Render redeploy/restart clears all datasets
+  and models; users must upload again. The frontend treats a vanished ID as an
+  error and lets the user start over.
+- **Single instance only.** Two instances (or autoscaling/preview environments)
+  do not share state — an ID created by instance A returns `404` on instance B.
+  Keep the service at **one instance**.
+- **Free-tier spin-down.** Render's free plan sleeps the service; the first
+  request after idle is slow, and any state is gone after a restart. Expect
+  re-uploads on a fresh session.
+- Model training happens in-request (up to 120 s client timeout); very large
+  datasets are capped by `MAX_DATASET_*` to keep requests within platform
+  limits. Render also enforces its own request timeouts — keep CSVs modest
+  on free-tier instances, which are slower to train on.
 
 ## API overview
 
@@ -134,8 +233,10 @@ npm run build        # production bundle
 ## Notes & limitations
 
 - Datasets and trained models are kept **in memory** (restart clears them) —
-  this is a local development/demo setup, not a multi-user service.
+  see [Storage limitations](#storage-limitations-read-before-deploying).
 - Uploaded CSVs are limited in size and dimensions; validation errors are
   returned as friendly `400` messages.
 - Missing feature values at predict time are imputed with the training-time
   imputer; a completely empty `features` object is rejected with `400`.
+- CORS is an explicit origin allow-list (`CORS_ORIGINS`); it is never
+  unrestricted (`*`) in production.

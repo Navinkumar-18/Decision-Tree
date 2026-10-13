@@ -10,7 +10,11 @@ import type {
   TreeStructure,
 } from '../types'
 
-const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://127.0.0.1:8000'
+// Deployment: set VITE_API_BASE_URL (build-time) to the deployed backend origin,
+// e.g. https://treeviz-api.onrender.com
+// Local development: leave unset — requests go to the same origin on :3000 and
+// Vite's dev proxy (vite.config.ts, server.proxy) forwards them to :8000.
+const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
 export const apiBaseUrl = rawBase.replace(/\/+$/, '')
 
 const client = axios.create({
@@ -70,7 +74,8 @@ export function errorMessage(error: unknown): string {
   const detail = axiosError?.response?.data?.detail
   if (typeof detail === 'string' && detail.trim()) return detail
   if (axiosError?.message === 'Network Error') {
-    return `Cannot reach the backend at ${apiBaseUrl}. Make sure it is running (see README).`
+    const target = apiBaseUrl || window.location.origin
+    return `Cannot reach the backend at ${target}. Make sure it is running and VITE_API_BASE_URL is set (see README).`
   }
   if (axiosError?.message?.includes('timeout')) return 'The request timed out. Please try again.'
   return axiosError?.message || 'Something went wrong. Please try again.'

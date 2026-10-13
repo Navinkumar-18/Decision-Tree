@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Environment files (never commit real values; .env.example stays tracked)
+.env
+.env.*
+!.env.example
+
 # Python / backend
 __pycache__/
 *.py[cod]

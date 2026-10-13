@@ -38,3 +38,14 @@ async def health():
         "title": "TreeViz AI API",
         "storage": "in-memory (local development only - data is lost on restart)",
     }
+
+
+@app.get("/")
+async def root():
+    """Root route: Render's default health check expects a 2xx from `/`."""
+    return {
+        "status": "healthy",
+        "title": "TreeViz AI API",
+        "docs": "/docs",
+        "health": "/api/health",
+    }
