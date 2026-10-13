@@ -303,6 +303,149 @@ def test_missing_target_column_is_not_defaulted(client, iris_dataset):
 
 
 # ---------------------------------------------------------------------------
+# student_pass_classification.csv (the reported dataset)
+# ---------------------------------------------------------------------------
+STUDENT_REGRESSION_TARGETS = [
+    "Study_Hours",
+    "Attendance_Percent",
+    "Assignment_Score",
+    "Previous_Score",
+]
+
+
+def test_student_dataset_problem_type_detection(student_dataset):
+    df = routes.datasets[student_dataset["dataset_id"]]["df"]
+    for column in STUDENT_REGRESSION_TARGETS:
+        assert detect_problem_type(df[column]) == "regression", column
+    assert detect_problem_type(df["Pass"]) == "classification"
+
+
+@pytest.mark.parametrize("algorithm", ["decision_tree", "random_forest"])
+@pytest.mark.parametrize("target_column", STUDENT_REGRESSION_TARGETS)
+def test_student_dataset_numeric_targets_train_regressors(
+    client, student_dataset, target_column, algorithm
+):
+    """Every numeric column (incl. Study_Hours) must train a regressor in auto mode."""
+    model = _train(
+        client,
+        student_dataset["dataset_id"],
+        target_column=target_column,
+        algorithm=algorithm,
+        max_depth=3,
+        n_estimators=4,
+    )
+    assert model["problem_type"] == "regression"
+    assert model["problem_type_detected"] == "regression"
+    assert model["criterion"] in REGRESSION_CRITERIA
+    estimator = _estimator(model["model_id"])
+    if algorithm == "decision_tree":
+        assert isinstance(estimator, DecisionTreeRegressor)
+    else:
+        assert isinstance(estimator, RandomForestRegressor)
+    assert estimator.criterion in REGRESSION_CRITERIA
+    assert set(model["metrics"]) >= {"mae", "rmse", "r2_score"}
+
+
+@pytest.mark.parametrize("algorithm", ["decision_tree", "random_forest"])
+def test_student_dataset_study_hours_explicit_regression(client, student_dataset, algorithm):
+    model = _train(
+        client,
+        student_dataset["dataset_id"],
+        target_column="Study_Hours",
+        problem_type="regression",
+        algorithm=algorithm,
+        max_depth=3,
+        n_estimators=4,
+    )
+    assert model["problem_type"] == "regression"
+    estimator = _estimator(model["model_id"])
+    if algorithm == "decision_tree":
+        assert isinstance(estimator, DecisionTreeRegressor)
+    else:
+        assert isinstance(estimator, RandomForestRegressor)
+    assert estimator.criterion in REGRESSION_CRITERIA
+
+
+@pytest.mark.parametrize("algorithm", ["decision_tree", "random_forest"])
+def test_student_dataset_pass_trains_classifier(client, student_dataset, algorithm):
+    model = _train(
+        client,
+        student_dataset["dataset_id"],
+        target_column="Pass",
+        algorithm=algorithm,
+        max_depth=3,
+        n_estimators=4,
+    )
+    assert model["problem_type"] == "classification"
+    assert model["problem_type_detected"] == "classification"
+    assert model["criterion"] in CLASSIFICATION_CRITERIA
+    estimator = _estimator(model["model_id"])
+    if algorithm == "decision_tree":
+        assert isinstance(estimator, DecisionTreeClassifier)
+    else:
+        assert isinstance(estimator, RandomForestClassifier)
+    assert estimator.criterion in CLASSIFICATION_CRITERIA
+    assert "accuracy" in model["metrics"]
+
+
+def test_student_dataset_pass_explicit_classification_override(client, student_dataset):
+    model = _train(
+        client,
+        student_dataset["dataset_id"],
+        target_column="Pass",
+        problem_type="classification",
+        max_depth=3,
+    )
+    assert model["problem_type"] == "classification"
+    assert isinstance(_estimator(model["model_id"]), DecisionTreeClassifier)
+
+
+def test_student_dataset_continuous_target_rejects_classification_override(
+    client, student_dataset
+):
+    """A forced Classification choice on continuous data fails with guidance
+    instead of a raw scikit-learn stack error."""
+    response = client.post(
+        "/api/models/train",
+        json={
+            "dataset_id": student_dataset["dataset_id"],
+            "target_column": "Study_Hours",
+            "problem_type": "classification",
+        },
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "continuous" in detail.lower()
+    assert "regression" in detail.lower()
+
+
+def test_student_dataset_regression_predictions_and_paths(client, student_dataset):
+    model = _train(
+        client,
+        student_dataset["dataset_id"],
+        target_column="Study_Hours",
+        max_depth=3,
+    )
+    features = {
+        "Attendance_Percent": 75,
+        "Assignment_Score": 60,
+        "Previous_Score": 55,
+        "Pass": "Yes",
+    }
+    prediction = client.post(
+        f"/api/models/{model['model_id']}/predict", json={"features": features}
+    ).json()
+    assert prediction["problem_type"] == "regression"
+    assert float(prediction["prediction"]) == float(prediction["prediction"])
+
+    path = client.post(
+        f"/api/models/{model['model_id']}/decision-path", json={"features": features}
+    ).json()
+    assert path["path"][0] == 0
+    assert path["rules"]
+
+
+# ---------------------------------------------------------------------------
 # Tree structure extraction matches the fitted estimator
 # ---------------------------------------------------------------------------
 def test_extracted_tree_matches_fitted_estimator(client, iris_dataset):

@@ -47,6 +47,25 @@ MAX_FEATURES_OPTIONS = ("sqrt", "log2", "all")
 CRITERION_ALIASES = {"mse": "squared_error", "rmse": "squared_error", "mae": "absolute_error"}
 
 
+def _has_fractional_values(y: pd.Series) -> bool:
+    """True when a numeric column contains non-integer values (1.5, 2.5, ...).
+
+    Fractional values mark continuous measurements (hours, percentages, ...).
+    scikit-learn refuses to fit a classifier on such targets, so they must never
+    be treated as class labels.
+    """
+    if not pd.api.types.is_numeric_dtype(y) or pd.api.types.is_bool_dtype(y):
+        return False
+    values = y.dropna()
+    if values.empty or not pd.api.types.is_float_dtype(values):
+        return False
+    arr = values.to_numpy(dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return False
+    return bool((np.mod(arr, 1) != 0).any())
+
+
 def detect_problem_type(y: pd.Series) -> str:
     """Infer whether the target column looks like classification or regression.
 
@@ -54,18 +73,25 @@ def detect_problem_type(y: pd.Series) -> str:
     wins (see ``ModelTrainer.train_model``); this helper only powers ``auto``:
 
     - boolean and non-numeric columns are class labels;
-    - numeric columns with very few distinct values are class labels too
-      (0/1 flags, 1-5 ratings, small integer codes) even though they are numeric;
-    - numeric columns with many distinct values (continuous measurements such as
-      ``Study_Hours``) stay regression targets.
+    - numeric columns with fractional values (1.5, 2.5, ...) are continuous
+      measurements such as ``Study_Hours`` -> regression, however few distinct
+      values they take;
+    - integer-like numeric columns with very few distinct values are class
+      labels (0/1 flags, 1-5 ratings, small integer codes);
+    - integer-like numeric columns with many distinct values relative to the
+      row count (scores, ages, counts) stay regression targets.
 
-    Ambiguous columns (e.g. a continuous-looking column with few observed
-    values) are resolved with the explicit problem-type setting in Advanced
-    Settings rather than a silent guess.
+    Ambiguous columns are resolved with the explicit problem-type setting in
+    Advanced Settings rather than a silent guess.
     """
     if pd.api.types.is_bool_dtype(y):
         return "classification"
     if pd.api.types.is_numeric_dtype(y):
+        # Continuous measurements are never class labels - this comes before the
+        # cardinality heuristic, so a column like Study_Hours (1.0, 1.5, 2.0,
+        # only a handful of distinct values) still resolves to regression.
+        if _has_fractional_values(y):
+            return "regression"
         n_unique = int(y.nunique(dropna=True))
         n = int(y.notna().sum())
         if n_unique <= 2:
@@ -256,6 +282,16 @@ class ModelTrainer:
                     "Use a numeric column for regression."
                 )
         else:
+            # Auto-detection never resolves a continuous column to
+            # classification; this only triggers for an explicit Classification
+            # override, where scikit-learn would fail with
+            # "Unknown label type: continuous".
+            if _has_fractional_values(y):
+                raise ValueError(
+                    f"The target column '{target_column}' contains continuous values "
+                    "(e.g. 1.5, 2.5), which cannot be used as class labels. "
+                    "Choose a regression problem type or pick a categorical target."
+                )
             if not pd.api.types.is_numeric_dtype(y):
                 y = y.astype(str)
             else:

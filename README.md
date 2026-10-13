@@ -56,7 +56,7 @@ decision_tree/
 │   │   ├── services/trainer.py   # ModelTrainer, detect_problem_type, metadata
 │   │   ├── ml/tree_extractor.py  # sklearn tree_ → serialisable node graph
 │   │   └── preprocessing/preprocessor.py  # ColumnTransformer pipeline
-│   ├── tests/                    # 63 pytest tests
+│   ├── tests/                    # 79 pytest tests
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
 │   ├── run.sh                    # local dev (reload, port 8000)
@@ -104,7 +104,7 @@ dev server somewhere else, copy `.env.example` to `.env` and set
 ### 3. Checks
 
 ```bash
-# backend — 63 tests
+# backend — 79 tests
 cd backend && .venv/bin/python -m pytest tests -q
 
 # frontend

@@ -241,6 +241,22 @@ function App() {
     setPredictionOpen(false)
   }, [])
 
+  // Task-specific settings belong to the selected target column: reset the
+  // problem-type override and criterion whenever the target changes so a
+  // previous Classification/Regression choice cannot leak into the next column.
+  const resetTaskSettings = useCallback(() => {
+    setSettings((prev) =>
+      prev.problem_type === DEFAULT_SETTINGS.problem_type &&
+      prev.criterion === DEFAULT_SETTINGS.criterion
+        ? prev
+        : {
+            ...prev,
+            problem_type: DEFAULT_SETTINGS.problem_type,
+            criterion: DEFAULT_SETTINGS.criterion,
+          },
+    )
+  }, [])
+
   const handleFile = useCallback(
     async (file: File) => {
       setUploading(true)
@@ -250,6 +266,7 @@ function App() {
         setDataset(info)
         setTargetColumn('')
         resetModel()
+        resetTaskSettings()
         setStatus('awaiting_target')
         lastSignatureRef.current = ''
       } catch (err) {
@@ -258,7 +275,7 @@ function App() {
         setUploading(false)
       }
     },
-    [resetModel],
+    [resetModel, resetTaskSettings],
   )
 
   const handleSample = useCallback(
@@ -275,6 +292,7 @@ function App() {
         setDataset(info)
         setTargetColumn(defaultTarget) // samples start generating immediately
         resetModel()
+        resetTaskSettings()
         lastSignatureRef.current = ''
       } catch (err) {
         setError(errorMessage(err))
@@ -282,7 +300,7 @@ function App() {
         setUploading(false)
       }
     },
-    [samples, resetModel],
+    [samples, resetModel, resetTaskSettings],
   )
 
   const handlePreview = useCallback(async () => {
@@ -376,6 +394,7 @@ function App() {
             value={targetColumn}
             onChange={(column) => {
               setTargetColumn(column)
+              resetTaskSettings()
               setSelectedNodeId(null)
               setPath([])
               setPathEdges([])

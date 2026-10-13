@@ -72,3 +72,17 @@ def iris_dataset(client):
     response = client.post("/api/datasets/sample/iris")
     assert response.status_code == 200, response.text
     return response.json()
+
+
+@pytest.fixture()
+def student_dataset(client):
+    """The exact ``student_pass_classification.csv`` reported dataset."""
+    path = os.path.join(os.path.dirname(__file__), "data", "student_pass_classification.csv")
+    with open(path, "rb") as handle:
+        content = handle.read()
+    response = client.post(
+        "/api/datasets/upload",
+        files={"file": ("student_pass_classification.csv", io.BytesIO(content), "text/csv")},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
