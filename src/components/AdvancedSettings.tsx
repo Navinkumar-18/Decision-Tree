@@ -1,15 +1,28 @@
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { ChevronDown, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { DEFAULT_SETTINGS } from '../constants'
-import type { AdvancedSettings, ModelType, ProblemTypeChoice } from '../types'
+import type { AdvancedSettings, ModelType, ProblemType, ProblemTypeChoice } from '../types'
 
 interface Props {
   open: boolean
   modelType: ModelType
   settings: AdvancedSettings
+  detectedProblemType?: ProblemType | null
   onToggle: () => void
   onChange: (settings: AdvancedSettings) => void
 }
+
+const CLASSIFICATION_CRITERIA = [
+  { value: 'gini', label: 'Gini impurity' },
+  { value: 'entropy', label: 'Entropy' },
+  { value: 'log_loss', label: 'Log loss' },
+]
+
+const REGRESSION_CRITERIA = [
+  { value: 'squared_error', label: 'Squared error' },
+  { value: 'absolute_error', label: 'Absolute error' },
+  { value: 'friedman_mse', label: 'Friedman MSE' },
+]
 
 const fieldClass =
   'w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100'
@@ -18,22 +31,33 @@ const Label = ({ children }: { children: ReactNode }) => (
   <span className="mb-1 block text-[11px] font-medium text-slate-500">{children}</span>
 )
 
-const AdvancedSettingsPanel = ({ open, modelType, settings, onToggle, onChange }: Props) => {
-  const isClassification = settings.problem_type !== 'regression'
-  const criteria = isClassification
-    ? [
-        { value: 'gini', label: 'Gini impurity' },
-        { value: 'entropy', label: 'Entropy' },
-        { value: 'log_loss', label: 'Log loss' },
-      ]
-    : [
-        { value: 'squared_error', label: 'Squared error' },
-        { value: 'absolute_error', label: 'Absolute error' },
-        { value: 'friedman_mse', label: 'Friedman MSE' },
-      ]
+const AdvancedSettingsPanel = ({
+  open,
+  modelType,
+  settings,
+  detectedProblemType,
+  onToggle,
+  onChange,
+}: Props) => {
+  // In 'auto' mode the criterion must follow the detected task, otherwise a
+  // classification criterion (e.g. gini) would be sent for a regression target.
+  const effectiveTask: ProblemType | null =
+    settings.problem_type === 'auto' ? (detectedProblemType ?? null) : settings.problem_type
+  const criteria = useMemo(
+    () => (effectiveTask === 'regression' ? REGRESSION_CRITERIA : CLASSIFICATION_CRITERIA),
+    [effectiveTask],
+  )
   const criterionValue = criteria.some((c) => c.value === settings.criterion)
     ? settings.criterion
     : criteria[0].value
+
+  // Keep the stored criterion inside the option list (e.g. when auto-detection
+  // resolves the target as regression after gini was selected).
+  useEffect(() => {
+    if (!criteria.some((c) => c.value === settings.criterion)) {
+      onChange({ ...settings, criterion: criteria[0].value })
+    }
+  }, [criteria, settings, onChange])
 
   const update = (patch: Partial<AdvancedSettings>) => onChange({ ...settings, ...patch })
 

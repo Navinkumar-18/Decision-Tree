@@ -6,6 +6,7 @@ import type {
   GenerateModelBody,
   ModelResult,
   PredictionResult,
+  ProblemTypeHint,
   SampleDataset,
   TreeStructure,
 } from '../types'
@@ -41,6 +42,11 @@ export const api = {
   previewDataset: (datasetId: string, limit = 10): Promise<DatasetPreview> =>
     client
       .get(`/datasets/${datasetId}/preview`, { params: { limit } })
+      .then((r) => r.data),
+
+  getProblemType: (datasetId: string, targetColumn: string): Promise<ProblemTypeHint> =>
+    client
+      .get(`/datasets/${datasetId}/problem-type`, { params: { target_column: targetColumn } })
       .then((r) => r.data),
 
   generateModel: (body: GenerateModelBody, config?: AxiosRequestConfig): Promise<ModelResult> =>

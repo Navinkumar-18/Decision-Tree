@@ -91,12 +91,17 @@ export interface GenerateModelBody {
   max_features?: string | null
 }
 
+export interface ProblemTypeHint {
+  problem_type: ProblemType
+}
+
 export interface ModelResult {
   model_id: string
   type: ModelType
   problem_type: ProblemType
   problem_type_detected: ProblemType
   target_column: string
+  criterion?: string
   metrics: Metrics
   tree?: TreeStructure
   trees?: TreeStructure[]

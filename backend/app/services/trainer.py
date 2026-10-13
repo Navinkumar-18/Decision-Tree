@@ -43,13 +43,25 @@ CLASSIFICATION_CRITERIA = ("gini", "entropy", "log_loss")
 REGRESSION_CRITERIA = ("squared_error", "friedman_mse", "absolute_error", "poisson")
 MAX_FEATURES_OPTIONS = ("sqrt", "log2", "all")
 
+# Legacy scikit-learn aliases accepted for backwards compatibility.
+CRITERION_ALIASES = {"mse": "squared_error", "rmse": "squared_error", "mae": "absolute_error"}
+
 
 def detect_problem_type(y: pd.Series) -> str:
     """Infer whether the target column looks like classification or regression.
 
-    Not dtype alone: numeric targets with few distinct values are treated as
-    classification labels, numeric targets with many distinct values as
-    continuous regression targets.
+    Never decided by dtype alone. The explicit ``problem_type`` request always
+    wins (see ``ModelTrainer.train_model``); this helper only powers ``auto``:
+
+    - boolean and non-numeric columns are class labels;
+    - numeric columns with very few distinct values are class labels too
+      (0/1 flags, 1-5 ratings, small integer codes) even though they are numeric;
+    - numeric columns with many distinct values (continuous measurements such as
+      ``Study_Hours``) stay regression targets.
+
+    Ambiguous columns (e.g. a continuous-looking column with few observed
+    values) are resolved with the explicit problem-type setting in Advanced
+    Settings rather than a silent guess.
     """
     if pd.api.types.is_bool_dtype(y):
         return "classification"
@@ -59,10 +71,32 @@ def detect_problem_type(y: pd.Series) -> str:
         if n_unique <= 2:
             return "classification"
         ratio = n_unique / max(n, 1)
-        if n_unique <= 15 and ratio <= 0.35:
+        if n_unique <= 20 and ratio <= 0.5:
             return "classification"
         return "regression"
     return "classification"
+
+
+def resolve_criterion(raw_criterion: Any, problem_type: str) -> str:
+    """Map a requested criterion onto a value that is valid for ``problem_type``.
+
+    The UI sends its criterion independently of the task (the default is
+    ``gini`` while ``problem_type`` is ``auto``), so a criterion that is valid
+    for the *other* task is mapped onto this task's default instead of being
+    handed to scikit-learn, which rejects it. Only values that are not a
+    criterion of either task are reported as errors.
+    """
+    allowed = CLASSIFICATION_CRITERIA if problem_type == "classification" else REGRESSION_CRITERIA
+    if raw_criterion is None or str(raw_criterion).strip() in ("", "None", "none"):
+        return allowed[0]
+    value = str(raw_criterion).strip().lower()
+    value = CRITERION_ALIASES.get(value, value)
+    if value in allowed:
+        return value
+    if value in CLASSIFICATION_CRITERIA or value in REGRESSION_CRITERIA:
+        # Valid, but for the other task -> use this task's default instead.
+        return allowed[0]
+    raise ValueError(f"Criterion must be one of: {', '.join(allowed)}.")
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -315,13 +349,14 @@ class ModelTrainer:
         )
         max_leaf_nodes = _optional_int(config.get("max_leaf_nodes"), "max_leaf_nodes")
 
+        # The requested criterion is validated against the *resolved* task, so a
+        # classification criterion (e.g. the UI default ``gini`` with
+        # ``problem_type: auto`` on a continuous target) can never reach a
+        # regressor, and a regression criterion can never reach a classifier.
+        criterion = resolve_criterion(config.get("criterion"), resolved)
+
         if algorithm == "decision_tree":
             if resolved == "classification":
-                criterion = config.get("criterion") or "gini"
-                if criterion not in CLASSIFICATION_CRITERIA:
-                    raise ValueError(
-                        f"Criterion must be one of: {', '.join(CLASSIFICATION_CRITERIA)}."
-                    )
                 estimator: Any = DecisionTreeClassifier(
                     criterion=criterion,
                     max_depth=max_depth,
@@ -331,11 +366,6 @@ class ModelTrainer:
                     random_state=random_state,
                 )
             else:
-                criterion = config.get("criterion") or "squared_error"
-                if criterion not in REGRESSION_CRITERIA:
-                    raise ValueError(
-                        f"Criterion must be one of: {', '.join(REGRESSION_CRITERIA)}."
-                    )
                 estimator = DecisionTreeRegressor(
                     criterion=criterion,
                     max_depth=max_depth,
@@ -369,9 +399,9 @@ class ModelTrainer:
                 n_jobs=-1,
             )
             if resolved == "classification":
-                estimator = RandomForestClassifier(**rf_kwargs)
+                estimator = RandomForestClassifier(criterion=criterion, **rf_kwargs)
             else:
-                estimator = RandomForestRegressor(**rf_kwargs)
+                estimator = RandomForestRegressor(criterion=criterion, **rf_kwargs)
 
         estimator.fit(X_train_arr, y_train)
         y_pred = estimator.predict(eval_arr)
@@ -412,6 +442,8 @@ class ModelTrainer:
             "problem_type": resolved,
             "problem_type_detected": detected,
             "target_column": target_column,
+            # criterion actually handed to scikit-learn for the resolved task
+            "criterion": criterion,
             "metrics": metrics,
             "feature_importances": [float(v) for v in estimator.feature_importances_],
             "feature_names": feature_names,

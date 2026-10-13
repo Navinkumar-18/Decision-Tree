@@ -22,6 +22,7 @@ import type {
   GenerateModelBody,
   ModelResult,
   ModelType,
+  ProblemType,
   SampleDataset,
   TreeOverview,
   TreeStructure,
@@ -33,6 +34,11 @@ function App() {
   const [dataset, setDataset] = useState<DatasetInfo | null>(null)
   const [uploading, setUploading] = useState(false)
   const [targetColumn, setTargetColumn] = useState('')
+  const [problemTypeHint, setProblemTypeHint] = useState<{
+    datasetId: string
+    targetColumn: string
+    problemType: ProblemType
+  } | null>(null)
   const [modelType, setModelType] = useState<ModelType>('decision_tree')
   const [settings, setSettings] = useState<AdvancedSettings>(DEFAULT_SETTINGS)
   const [settledSettings, setSettledSettings] = useState<AdvancedSettings>(DEFAULT_SETTINGS)
@@ -80,6 +86,29 @@ function App() {
       .then(setSamples)
       .catch(() => setSamples([]))
   }, [])
+
+  // -------------------------------------------------------------------------
+  // Detected task for the selected target (drives the criterion options in
+  // 'auto' mode; the backend still re-checks everything server-side)
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!dataset || !targetColumn) return
+    let stale = false
+    api
+      .getProblemType(dataset.dataset_id, targetColumn)
+      .then((hint) => {
+        if (stale) return
+        setProblemTypeHint({
+          datasetId: dataset.dataset_id,
+          targetColumn,
+          problemType: hint.problem_type,
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      stale = true
+    }
+  }, [dataset, targetColumn])
 
   // -------------------------------------------------------------------------
   // Debounce advanced settings so rapid edits trigger a single regeneration
@@ -293,6 +322,15 @@ function App() {
   // -------------------------------------------------------------------------
   // Derived UI state
   // -------------------------------------------------------------------------
+  // Only trust the hint when it matches the current dataset + target.
+  const detectedProblemType =
+    problemTypeHint &&
+    dataset &&
+    problemTypeHint.datasetId === dataset.dataset_id &&
+    problemTypeHint.targetColumn === targetColumn
+      ? problemTypeHint.problemType
+      : null
+
   const generating = status === 'generating'
   const canvasMessage = !dataset
     ? 'Upload a CSV dataset or try a sample dataset to get started.'
@@ -359,6 +397,7 @@ function App() {
             open={advancedOpen}
             modelType={modelType}
             settings={settings}
+            detectedProblemType={detectedProblemType}
             onToggle={() => setAdvancedOpen((v) => !v)}
             onChange={setSettings}
           />
