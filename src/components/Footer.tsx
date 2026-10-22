@@ -15,8 +15,7 @@ const Footer = () => {
         </div>
 
         <p className="text-sm text-slate-500">
-          Made with <span className="text-rose-500">♥</span> by{' '}
-          <span className="font-semibold text-slate-800">Navinkumar M</span>
+          by <span className="font-semibold text-slate-800">Navinkumar M</span>
         </p>
       </div>
     </footer>
