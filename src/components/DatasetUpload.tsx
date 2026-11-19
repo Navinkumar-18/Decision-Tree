@@ -64,7 +64,7 @@ const DatasetUpload = ({ dataset, uploading, samples, onFile, onSample, onPrevie
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700"
             >
               <option value="" disabled>
-                Choose dataset...
+                {samples.length === 0 ? 'No samples available' : 'Choose dataset...'}
               </option>
               {samples.map((sample) => (
                 <option key={sample.id} value={sample.id}>
@@ -122,7 +122,7 @@ const DatasetUpload = ({ dataset, uploading, samples, onFile, onSample, onPrevie
               className="border-0 bg-transparent p-0 text-[11px] font-medium text-indigo-600 focus:ring-0"
             >
               <option value="" disabled>
-                Load a sample dataset
+                {samples.length === 0 ? 'No samples available' : 'Load a sample dataset'}
               </option>
               {samples.map((sample) => (
                 <option key={sample.id} value={sample.id}>

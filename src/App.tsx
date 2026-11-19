@@ -73,6 +73,7 @@ function App() {
   const [predictionOpen, setPredictionOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [retryToken, setRetryToken] = useState(0)
+  const [samplesToken, setSamplesToken] = useState(0)
 
   const lastSignatureRef = useRef('')
   const lastOutcomeRef = useRef<'pending' | 'ok' | 'failed'>('pending')
@@ -85,8 +86,11 @@ function App() {
     api
       .listSamples()
       .then(setSamples)
-      .catch(() => setSamples([]))
-  }, [])
+      .catch((err) => {
+        setSamples([])
+        setError(errorMessage(err))
+      })
+  }, [samplesToken])
 
   // -------------------------------------------------------------------------
   // Detected task for the selected target (drives the criterion options in
@@ -425,7 +429,13 @@ function App() {
 
         {error && (
           <div className="mt-4">
-            <ErrorMessage message={error} onRetry={() => setRetryToken((t) => t + 1)} />
+            <ErrorMessage
+              message={error}
+              onRetry={() => {
+                setRetryToken((t) => t + 1)
+                setSamplesToken((t) => t + 1)
+              }}
+            />
           </div>
         )}
 

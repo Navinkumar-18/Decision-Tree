@@ -71,6 +71,12 @@ const Header = ({ samples, loading, onSample, onFile }: Props) => {
             </button>
             {open && (
               <div className="absolute right-0 z-40 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                {samples.length === 0 && (
+                  <div className="px-4 py-3 text-xs leading-relaxed text-slate-500">
+                    No sample datasets are available. Start the backend (see README) and
+                    refresh the page.
+                  </div>
+                )}
                 {samples.map((sample) => (
                   <button
                     key={sample.id}

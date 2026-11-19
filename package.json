@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "backend": "cd backend && python3 -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"
