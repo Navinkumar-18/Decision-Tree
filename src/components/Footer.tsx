@@ -23,9 +23,11 @@ const Footer = () => {
           <span className="hidden h-4 w-px bg-slate-200 sm:block" />
 
           <span className="text-slate-500">
-            by <span className="font-semibold text-slate-800">Navinkumar M</span>
+            by <span className="font-semibold text-slate-800">Navinkumar-732924CSR107</span>
             <span className="mx-1.5 text-slate-300">&middot;</span>
-            <span className="font-semibold text-slate-800">Jeriel J</span>
+            <span className="font-semibold text-slate-800">Jeriel J 732924CSR062</span>
+            <span className="mx-1.5 text-slate-300">&middot;</span>
+            <span className="font-semibold text-slate-800">Prathiev N P 732924CSR122</span>
           </span>
         </div>
       </div>

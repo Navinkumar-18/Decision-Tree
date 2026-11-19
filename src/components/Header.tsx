@@ -25,6 +25,20 @@ const Header = ({ samples, loading, onSample, onFile }: Props) => {
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="border-b border-slate-100 bg-slate-50/80">
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-1.5 text-[11px] font-medium text-slate-500 sm:justify-end sm:px-6">
+          <span className="font-semibold uppercase tracking-wide text-indigo-600">
+            Team Tree Wizards
+          </span>
+          <span className="hidden text-slate-300 sm:inline">&middot;</span>
+          <span className="text-slate-600">Navinkumar-732924CSR107</span>
+          <span className="text-slate-300">&middot;</span>
+          <span className="text-slate-600">Jeriel J 732924CSR062</span>
+          <span className="text-slate-300">&middot;</span>
+          <span className="text-slate-600">Prathiev N P 732924CSR122</span>
+        </div>
+      </div>
+
       <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white">
